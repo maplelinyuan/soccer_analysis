@@ -24,7 +24,7 @@ def timming_exe(cmd, inc=60):
     schedule.run()
 
 
-crawl_commend_1 = 'python compute_support.py'
+crawl_commend_1 = 'python compute_support_copy.py'
 Timer(6, timming_exe, (crawl_commend_1, 600)).start()
 print('保存爬虫任务：', crawl_commend_1)
 
