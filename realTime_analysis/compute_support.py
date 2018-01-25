@@ -8,6 +8,7 @@ import json
 import pdb
 import numpy
 from collections import Counter
+import itchat
 
 # 一些参数
 need_company_id = '156'  # 必须含有的公司ID
@@ -46,11 +47,14 @@ db = client[db_name]  # 获得数据库的句柄
 coll_name = 'matchs_' + current_search_date
 coll = db[coll_name]  # 获得collection的句柄
 
+itchat.auto_login(hotReload=True)
 for single_match_dict in coll.find():
     match_id = single_match_dict['match_id']
     # 如果当前match_id是正在爬取的比赛，则跳过
     if match_id in crawling_match_id_list:
+        print('%s 正在爬取，跳过！' % match_id)
         continue
+    print('开始分析：%s ' % match_id)
     # 遍历当天所有比赛
     league_name = single_match_dict['league_name']
     home_name = single_match_dict['home_name']
@@ -69,17 +73,17 @@ for single_match_dict in coll.find():
     last_home_prob_list = []  # 平均限制时间终主赔列表
     last_draw_prob_list = []  # 平均限制时间终平赔列表
     last_away_prob_list = []  # 平均限制时间终客赔列表
-    if len(match_company_id_list) < need_company_number:
-        continue  # 该场比赛开盘公司数目小于10就跳过
+    # if len(match_company_id_list) < need_company_number:
+    #     continue  # 该场比赛开盘公司数目小于10就跳过
 
     # 如果某公司ID不在该场比赛中就跳过
-    if need_company_id != '' and not need_company_id in [item.split('_')[-1] for item in match_company_id_list]:
-        print('%s 不含有必要开赔公司ID' % match_id)
-        continue
+    # if need_company_id != '' and not need_company_id in [item.split('_')[-1] for item in match_company_id_list]:
+    #     print('%s 不含有必要开赔公司ID' % match_id)
+    #     continue
     company_coll = db["match_" + match_id]
     for single_company_id in match_company_id_list:
         # 遍历单场比赛所有赔率公司列表, 为了求限制时间前的平均概率
-        company_coll_cursor = company_coll.find({"company_id": single_company_id})  # 查询赔率信息
+        company_coll_cursor = company_coll.find_one({"company_id": single_company_id})  # 查询赔率信息
         # current_company_odd_num = company_coll_cursor.count()  # 当前比赛当前公司赔率数目
         original_home_odd = company_coll_cursor['home_odd']
         original_draw_odd = company_coll_cursor['draw_odd']
@@ -156,7 +160,10 @@ for single_match_dict in coll.find():
             if (0.95 / last_away_prob_average) < 1.5:
                 continue
             single_match_info_dict['support_direction'] += '0'
-        print('%s 有支持方向' % match_id)
         coll.update({"match_id": match_id}, {"support_direction": single_match_info_dict['support_direction']})
+        print('%s 有支持方向' % match_id)
+        send_text = '联赛名称: %s,开赛时间: %s,主队: %s,客队: %s,支持方向: %s' % (league_name, start_time, home_name, away_name, single_match_info_dict['support_direction'])
+        itchat.send(send_text, toUserName='filehelper')
     else:
-        print('%s 的diff都小于0' % match_id)
+        pass
+        # print('%s 的diff都小于0' % match_id)
