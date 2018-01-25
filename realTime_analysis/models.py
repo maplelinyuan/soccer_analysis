@@ -9,13 +9,20 @@ if current_hour < 12:
     current_search_date = yesterdy  # str
 else:
     current_search_date = nowadays  # str
-DBNAME = 'realTime_' + current_search_date
+DBNAME = 'realTime_matchs'
+COLNAME = 'matchs_' + current_search_date
 
 # 链接MongoDB
 connect(DBNAME, host='127.0.0.1', port=27017)
 # Create your models here.
-class single_match(Document):
-    name = StringField(max_length=16)
-    age = IntField(default=1)
+class SingleMatch(Document):
+    _id = ObjectIdField()
+    match_id = StringField(max_length=10)
+    league_name = StringField(max_length=30)
+    home_name = StringField(max_length=30)
+    away_name = StringField(max_length=30)
+    start_time = StringField(max_length=30)
+    support_direction = StringField(max_length=10)
+    company_id_list = ListField()
 
-    meta = {'collection': 'sample'}  # 指明连接数据库的哪张表
+    meta = {'collection': COLNAME}  # 指明连接数据库的哪张表

@@ -43,7 +43,7 @@ if 'matchId_list' in info_coll.find_one({"crawling": 1}).keys():
 
 db_name = 'realTime_matchs'
 db = client[db_name]  # 获得数据库的句柄
-coll_name = 'matches_' + current_search_date
+coll_name = 'matchs_' + current_search_date
 coll = db[coll_name]  # 获得collection的句柄
 
 for single_match_dict in coll.find():

@@ -1,0 +1,15 @@
+.text_mid{
+    text-align: center;
+}
+.div_mid{
+    margin: 10px auto;
+}
+.my_table{
+    border: 1px solid #333;
+}
+.my_th{
+    padding: 6px 16px;
+}
+.my_td{
+    padding: 6px 16px;
+}

@@ -1,10 +1,36 @@
+{% load static %}   {# 这个地方引入static这个文件 #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Index</title>
+    <title>实时分析</title>
+    <link rel="stylesheet" href="{% static "css/index.css" %}">
 </head>
 <body>
-    <b>Hello,world!</b>
+    <h3 class="text_mid">实时分析</h3>
+    <div>
+        <table class="div_mid my_table">
+            <thead>
+                <tr>
+                    <th class="my_th">联赛名称</th>
+                    <th class="my_th">开赛时间</th>
+                    <th class="my_th">主队</th>
+                    <th class="my_th">客队</th>
+                    <th class="my_th">支持方向</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for match in match_list %}
+                <tr>
+                    <td class="my_td">{{ match.league_name }}</td>
+                    <td class="my_td">{{ match.start_time }}</td>
+                    <td class="my_td">{{ match.home_name }}</td>
+                    <td class="my_td">{{ match.away_name }}</td>
+                    <td class="my_td">{{ match.support_direction }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </body>
 </html>
