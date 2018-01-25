@@ -2,13 +2,18 @@
 
 from pymongo import MongoClient
 import datetime
-import time
+import time, sched
 import regex
 import json
 import pdb
 import numpy
 from collections import Counter
 import itchat
+from threading import Timer
+
+# 第一个参数确定任务的时间，返回从某个特定的时间到现在经历的秒数
+# 第二个参数以某种人为的方式衡量时间
+schedule = sched.scheduler(time.time, time.sleep)
 
 # 一些参数
 need_company_id = '156'  # 必须含有的公司ID
@@ -48,122 +53,137 @@ coll_name = 'matchs_' + current_search_date
 coll = db[coll_name]  # 获得collection的句柄
 
 itchat.auto_login(hotReload=True)
-for single_match_dict in coll.find():
-    match_id = single_match_dict['match_id']
-    # 如果当前match_id是正在爬取的比赛，则跳过
-    if match_id in crawling_match_id_list:
-        print('%s 正在爬取，跳过！' % match_id)
-        continue
-    print('开始分析：%s ' % match_id)
-    # 遍历当天所有比赛
-    league_name = single_match_dict['league_name']
-    home_name = single_match_dict['home_name']
-    away_name = single_match_dict['away_name']
-    start_time = single_match_dict['start_time']  # 如：2018-01-12 18:00
-    start_timestamp = time.mktime(time.strptime(start_time, "%Y-%m-%d %H:%M"))  # 开赛时间戳
-    match_company_id_list = single_match_dict['company_id_list']
-    # 单场比赛信息字典
-    single_match_info_dict = {
-        'start_time': start_time,
-    }
-    original_home_prob_list = []  # 初主赔列表
-    original_draw_prob_list = []  # 初平赔列表
-    original_away_prob_list = []  # 初客赔列表
+def compute(inc):
+    schedule.enter(inc, 0, compute, (inc,))
+    for single_match_dict in coll.find():
+        match_id = single_match_dict['match_id']
+        # 如果当前match_id是正在爬取的比赛，则跳过
+        if match_id in crawling_match_id_list:
+            print('%s 正在爬取，跳过！' % match_id)
+            continue
+        nowtime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print('开始分析：%s 时间:%s' % (match_id, nowtime))
+        # 遍历当天所有比赛
+        league_name = single_match_dict['league_name']
+        home_name = single_match_dict['home_name']
+        away_name = single_match_dict['away_name']
+        start_time = single_match_dict['start_time']  # 如：2018-01-12 18:00
+        start_timestamp = time.mktime(time.strptime(start_time, "%Y-%m-%d %H:%M"))  # 开赛时间戳
+        match_company_id_list = single_match_dict['company_id_list']
+        # 单场比赛信息字典
+        single_match_info_dict = {
+            'start_time': start_time,
+        }
+        original_home_prob_list = []  # 初主赔列表
+        original_draw_prob_list = []  # 初平赔列表
+        original_away_prob_list = []  # 初客赔列表
 
-    last_home_prob_list = []  # 平均限制时间终主赔列表
-    last_draw_prob_list = []  # 平均限制时间终平赔列表
-    last_away_prob_list = []  # 平均限制时间终客赔列表
-    # if len(match_company_id_list) < need_company_number:
-    #     continue  # 该场比赛开盘公司数目小于10就跳过
+        last_home_prob_list = []  # 平均限制时间终主赔列表
+        last_draw_prob_list = []  # 平均限制时间终平赔列表
+        last_away_prob_list = []  # 平均限制时间终客赔列表
+        # if len(match_company_id_list) < need_company_number:
+        #     continue  # 该场比赛开盘公司数目小于10就跳过
 
-    # 如果某公司ID不在该场比赛中就跳过
-    # if need_company_id != '' and not need_company_id in [item.split('_')[-1] for item in match_company_id_list]:
-    #     print('%s 不含有必要开赔公司ID' % match_id)
-    #     continue
-    company_coll = db["match_" + match_id]
-    for single_company_id in match_company_id_list:
-        # 遍历单场比赛所有赔率公司列表, 为了求限制时间前的平均概率
-        company_coll_cursor = company_coll.find_one({"company_id": single_company_id})  # 查询赔率信息
-        # current_company_odd_num = company_coll_cursor.count()  # 当前比赛当前公司赔率数目
-        original_home_odd = company_coll_cursor['home_odd']
-        original_draw_odd = company_coll_cursor['draw_odd']
-        original_away_odd = company_coll_cursor['away_odd']
-        last_home_odd = company_coll_cursor['last_home_odd']
-        last_draw_odd = company_coll_cursor['last_draw_odd']
-        last_away_odd = company_coll_cursor['last_away_odd']
-        original_home_probability = round(
-            (original_draw_odd * original_away_odd) / (original_home_odd * original_draw_odd + original_home_odd * original_away_odd + original_draw_odd * original_away_odd), 3)
-        original_draw_probability = round(
-            (original_home_odd * original_away_odd) / (original_home_odd * original_draw_odd + original_home_odd * original_away_odd + original_draw_odd * original_away_odd), 3)
-        original_away_probability = round(
-            (original_home_odd * original_draw_odd) / (original_home_odd * original_draw_odd + original_home_odd * original_away_odd + original_draw_odd * original_away_odd), 3)
-        original_home_prob_list.append(original_home_probability)
-        original_draw_prob_list.append(original_draw_probability)
-        original_away_prob_list.append(original_away_probability)
-        last_home_probability = round(
-            (last_draw_odd * last_away_odd) / (
-                    last_home_odd * last_draw_odd + last_home_odd * last_away_odd + last_draw_odd * last_away_odd),
-            3)
-        last_draw_probability = round(
-            (last_home_odd * last_away_odd) / (
-                    last_home_odd * last_draw_odd + last_home_odd * last_away_odd + last_draw_odd * last_away_odd),
-            3)
-        last_away_probability = round(
-            (last_home_odd * last_draw_odd) / (
-                    last_home_odd * last_draw_odd + last_home_odd * last_away_odd + last_draw_odd * last_away_odd),
-            3)
-        last_home_prob_list.append(last_home_probability)
-        last_draw_prob_list.append(last_draw_probability)
-        last_away_prob_list.append(last_away_probability)
-    if len(last_home_prob_list) == 0:
-        continue
-    last_home_prob_average = round(sum(last_home_prob_list) / len(last_home_prob_list), 3)
-    last_draw_prob_average = round(sum(last_draw_prob_list) / len(last_draw_prob_list), 3)
-    last_away_prob_average = round(sum(last_away_prob_list) / len(last_away_prob_list), 3)
-    original_home_prob_average = round(sum(original_home_prob_list) / len(original_home_prob_list), 3)
-    original_draw_prob_average = round(sum(original_draw_prob_list) / len(original_draw_prob_list), 3)
-    original_away_prob_average = round(sum(original_away_prob_list) / len(original_away_prob_list), 3)
+        # 如果某公司ID不在该场比赛中就跳过
+        # if need_company_id != '' and not need_company_id in [item.split('_')[-1] for item in match_company_id_list]:
+        #     print('%s 不含有必要开赔公司ID' % match_id)
+        #     continue
+        company_coll = db["match_" + match_id]
+        for single_company_id in match_company_id_list:
+            # 遍历单场比赛所有赔率公司列表, 为了求限制时间前的平均概率
+            company_coll_cursor = company_coll.find_one({"company_id": single_company_id})  # 查询赔率信息
+            # current_company_odd_num = company_coll_cursor.count()  # 当前比赛当前公司赔率数目
+            original_home_odd = company_coll_cursor['home_odd']
+            original_draw_odd = company_coll_cursor['draw_odd']
+            original_away_odd = company_coll_cursor['away_odd']
+            last_home_odd = company_coll_cursor['last_home_odd']
+            last_draw_odd = company_coll_cursor['last_draw_odd']
+            last_away_odd = company_coll_cursor['last_away_odd']
+            original_home_probability = round(
+                (original_draw_odd * original_away_odd) / (original_home_odd * original_draw_odd + original_home_odd * original_away_odd + original_draw_odd * original_away_odd), 3)
+            original_draw_probability = round(
+                (original_home_odd * original_away_odd) / (original_home_odd * original_draw_odd + original_home_odd * original_away_odd + original_draw_odd * original_away_odd), 3)
+            original_away_probability = round(
+                (original_home_odd * original_draw_odd) / (original_home_odd * original_draw_odd + original_home_odd * original_away_odd + original_draw_odd * original_away_odd), 3)
+            original_home_prob_list.append(original_home_probability)
+            original_draw_prob_list.append(original_draw_probability)
+            original_away_prob_list.append(original_away_probability)
+            last_home_probability = round(
+                (last_draw_odd * last_away_odd) / (
+                        last_home_odd * last_draw_odd + last_home_odd * last_away_odd + last_draw_odd * last_away_odd),
+                3)
+            last_draw_probability = round(
+                (last_home_odd * last_away_odd) / (
+                        last_home_odd * last_draw_odd + last_home_odd * last_away_odd + last_draw_odd * last_away_odd),
+                3)
+            last_away_probability = round(
+                (last_home_odd * last_draw_odd) / (
+                        last_home_odd * last_draw_odd + last_home_odd * last_away_odd + last_draw_odd * last_away_odd),
+                3)
+            last_home_prob_list.append(last_home_probability)
+            last_draw_prob_list.append(last_draw_probability)
+            last_away_prob_list.append(last_away_probability)
+        if len(last_home_prob_list) == 0:
+            continue
+        last_home_prob_average = round(sum(last_home_prob_list) / len(last_home_prob_list), 3)
+        last_draw_prob_average = round(sum(last_draw_prob_list) / len(last_draw_prob_list), 3)
+        last_away_prob_average = round(sum(last_away_prob_list) / len(last_away_prob_list), 3)
+        original_home_prob_average = round(sum(original_home_prob_list) / len(original_home_prob_list), 3)
+        original_draw_prob_average = round(sum(original_draw_prob_list) / len(original_draw_prob_list), 3)
+        original_away_prob_average = round(sum(original_away_prob_list) / len(original_away_prob_list), 3)
 
-    home_pro_diff = (last_home_prob_average - original_home_prob_average) - limit_change_prob
-    draw_pro_diff = (last_draw_prob_average - original_draw_prob_average) - (
-            limit_change_prob - limit_draw_odd_differ)  # 平局限制赔率有所降低
-    away_pro_diff = (last_away_prob_average - original_away_prob_average) - limit_change_prob
-    if home_pro_diff > 0 or draw_pro_diff > 0 or away_pro_diff > 0:
-        single_match_info_dict['support_direction'] = ''
-        if home_pro_diff > 0:
-            # 如果初始该方向概率不是最大就跳过
-            if original_home_prob_average <= original_draw_prob_average or original_home_prob_average <= original_away_prob_average:
-                continue
-            # 跳过选择方向赔率小于1.5的比赛
-            if (0.95 / last_home_prob_average) < 1.5:
-                continue
-            single_match_info_dict['support_direction'] += '3'
-        if draw_pro_diff > 0:
-            # 跳过选择方向赔率小于1.5的比赛
-            if (0.95 / last_draw_prob_average) < 1.5:
-                continue
-            single_match_info_dict['support_direction'] += '1'
+        home_pro_diff = (last_home_prob_average - original_home_prob_average) - limit_change_prob
+        draw_pro_diff = (last_draw_prob_average - original_draw_prob_average) - (
+                limit_change_prob - limit_draw_odd_differ)  # 平局限制赔率有所降低
+        away_pro_diff = (last_away_prob_average - original_away_prob_average) - limit_change_prob
+        if home_pro_diff > 0 or draw_pro_diff > 0 or away_pro_diff > 0:
+            single_match_info_dict['support_direction'] = ''
+            if home_pro_diff > 0:
+                # 如果初始该方向概率不是最大就跳过
+                if original_home_prob_average <= original_draw_prob_average or original_home_prob_average <= original_away_prob_average:
+                    continue
+                # 跳过选择方向赔率小于1.5的比赛
+                if (0.95 / last_home_prob_average) < 1.5:
+                    continue
+                single_match_info_dict['support_direction'] += '3'
+            if draw_pro_diff > 0:
+                # 跳过选择方向赔率小于1.5的比赛
+                if (0.95 / last_draw_prob_average) < 1.5:
+                    continue
+                single_match_info_dict['support_direction'] += '1'
 
-            if (0.95 / last_draw_prob_average) >= 3.8:
-                # 如果支持方向是平局，且平局赔率大于等于3.8，则同时也支持低概率方向
-                if last_home_prob_average < 0.30 and home_pro_diff <= 0:
-                    # 同时支持主胜
-                    single_match_info_dict['support_direction'] += '3'
-                elif last_away_prob_average < 0.30 and away_pro_diff <= 0:
-                    # 同时支持客胜
-                    single_match_info_dict['support_direction'] += '0'
-        if away_pro_diff > 0:
-            # 如果初始该方向概率不是最大就跳过
-            if original_away_prob_average <= original_home_prob_average or original_away_prob_average <= original_draw_prob_average:
-                continue
-            # 跳过选择方向赔率小于1.5的比赛
-            if (0.95 / last_away_prob_average) < 1.5:
-                continue
-            single_match_info_dict['support_direction'] += '0'
-        coll.update({"match_id": match_id}, {"support_direction": single_match_info_dict['support_direction']})
-        print('%s 有支持方向' % match_id)
-        send_text = '联赛名称: %s,开赛时间: %s,主队: %s,客队: %s,支持方向: %s' % (league_name, start_time, home_name, away_name, single_match_info_dict['support_direction'])
-        itchat.send(send_text, toUserName='filehelper')
-    else:
-        pass
-        # print('%s 的diff都小于0' % match_id)
+                if (0.95 / last_draw_prob_average) >= 3.8:
+                    # 如果支持方向是平局，且平局赔率大于等于3.8，则同时也支持低概率方向
+                    if last_home_prob_average < 0.30 and home_pro_diff <= 0:
+                        # 同时支持主胜
+                        single_match_info_dict['support_direction'] += '3'
+                    elif last_away_prob_average < 0.30 and away_pro_diff <= 0:
+                        # 同时支持客胜
+                        single_match_info_dict['support_direction'] += '0'
+            if away_pro_diff > 0:
+                # 如果初始该方向概率不是最大就跳过
+                if original_away_prob_average <= original_home_prob_average or original_away_prob_average <= original_draw_prob_average:
+                    continue
+                # 跳过选择方向赔率小于1.5的比赛
+                if (0.95 / last_away_prob_average) < 1.5:
+                    continue
+                single_match_info_dict['support_direction'] += '0'
+            coll.update({"match_id": match_id}, {"support_direction": single_match_info_dict['support_direction']})
+            print('%s 有支持方向' % match_id)
+            send_text = '联赛名称: %s,开赛时间: %s,主队: %s,客队: %s,支持方向: %s' % (league_name, start_time, home_name, away_name, single_match_info_dict['support_direction'])
+            itchat.send(send_text, toUserName='filehelper')
+        else:
+            pass
+            # print('%s 的diff都小于0' % match_id)
+
+def timming_exe(inc=60):
+    # enter用来安排某事件的发生时间，从现在起第n秒开始启动
+    schedule.enter(inc, 0, compute, (inc,))
+    # 持续运行，直到计划时间队列变成空为止
+    schedule.run()
+
+# 任务调度
+def sche_my_task():
+    Timer(3, timming_exe, (300,)).start()
+
+sche_my_task()
