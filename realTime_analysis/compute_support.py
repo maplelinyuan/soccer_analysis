@@ -24,6 +24,7 @@ limit_mktime = 15600     # 临场N小时
 limit_change_prob = 0.035     # 限制概率变化
 limit_draw_odd_differ = 0.01     # 限制平局赔率差
 # 参数结束
+supported_match_id_list = []
 
 itchat.auto_login(hotReload=True)
 def compute(inc):
@@ -170,8 +171,21 @@ def compute(inc):
                 single_match_info_dict['support_direction'] += '0'
             coll.update({"match_id": match_id}, {"$set": {"support_direction": single_match_info_dict['support_direction']}})
             print('%s 有支持方向' % match_id)
-            send_text = '联赛名称: %s,开赛时间: %s,主队: %s,客队: %s,支持方向: %s' % (league_name, start_time, home_name, away_name, single_match_info_dict['support_direction'])
-            itchat.send(send_text, toUserName='filehelper')
+            if match_id in [item['match_id'] for item in supported_match_id_list]:
+                supported_match_index = ''
+                for k, v in enumerate(supported_match_id_list):
+                    if match_id == v['match_id']:
+                        supported_match_index = k
+                        break
+                # 最多发送三次消息
+                if supported_match_id_list[supported_match_index]['send_num'] < 3:
+                    send_text = '联赛名称: %s,开赛时间: %s,主队: %s,客队: %s,支持方向: %s' % (
+                    league_name, start_time, home_name, away_name, single_match_info_dict['support_direction'])
+                    itchat.send(send_text, toUserName='filehelper')
+                    supported_match_id_list[supported_match_index]['send_num'] += 1
+            else:
+                supported_dict = {'match_id': match_id, 'send_num': 1}
+                supported_match_id_list.append(supported_dict)
         else:
             pass
             # print('%s 的diff都小于0' % match_id)
