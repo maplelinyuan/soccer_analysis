@@ -25,36 +25,36 @@ limit_change_prob = 0.035     # 限制概率变化
 limit_draw_odd_differ = 0.01     # 限制平局赔率差
 # 参数结束
 
-current_hour = time.localtime()[3]  # 获取当前的小时数，如果小于12则应该选择yesterday
-nowadays = datetime.datetime.now().strftime("%Y-%m-%d")  # 获取当前日期 格式2018-01-01
-yesterdy = (datetime.datetime.now() + datetime.timedelta(days=-1)).strftime("%Y-%m-%d")  # 获取昨天日期
-if current_hour < 12:
-    current_search_date = yesterdy  # str
-else:
-    current_search_date = nowadays  # str
-
-# 链接数据库
-client = MongoClient(host='localhost', port=27017)
-# client.admin.authenticate(settings['MINGO_USER'], settings['MONGO_PSW'])     #如果有账户密码
-# 先找到当前正在爬取的matchId_list
-# db = client['realTime_info']
-# info_coll = db['realTime_crawling']
-# crawling_match_id_list = [data for data in info_coll.findOne({"crawling": 1})['matchId_list']]
-db = client['realTime_info']
-info_coll = db['realTime_crawling']
-crawling_match_id_list = []
-if 'matchId_list' in info_coll.find_one({"crawling": 1}).keys():
-    for item in info_coll.find_one({"crawling": 1})['matchId_list']:
-        crawling_match_id_list.append(str(item).strip())
-
-db_name = 'realTime_matchs'
-db = client[db_name]  # 获得数据库的句柄
-coll_name = 'matchs_' + current_search_date
-coll = db[coll_name]  # 获得collection的句柄
-
 itchat.auto_login(hotReload=True)
 def compute(inc):
-    schedule.enter(inc, 0, compute, (inc,))
+    schedule.enter(inc, 0, compute, (inc,))     # 调度任务
+    current_hour = time.localtime()[3]  # 获取当前的小时数，如果小于12则应该选择yesterday
+    nowadays = datetime.datetime.now().strftime("%Y-%m-%d")  # 获取当前日期 格式2018-01-01
+    yesterdy = (datetime.datetime.now() + datetime.timedelta(days=-1)).strftime("%Y-%m-%d")  # 获取昨天日期
+    if current_hour < 12:
+        current_search_date = yesterdy  # str
+    else:
+        current_search_date = nowadays  # str
+
+    # 链接数据库
+    client = MongoClient(host='localhost', port=27017)
+    # client.admin.authenticate(settings['MINGO_USER'], settings['MONGO_PSW'])     #如果有账户密码
+    # 先找到当前正在爬取的matchId_list
+    # db = client['realTime_info']
+    # info_coll = db['realTime_crawling']
+    # crawling_match_id_list = [data for data in info_coll.findOne({"crawling": 1})['matchId_list']]
+    db = client['realTime_info']
+    info_coll = db['realTime_crawling']
+    crawling_match_id_list = []
+    if 'matchId_list' in info_coll.find_one({"crawling": 1}).keys():
+        for item in info_coll.find_one({"crawling": 1})['matchId_list']:
+            crawling_match_id_list.append(str(item).strip())
+
+    db_name = 'realTime_matchs'
+    db = client[db_name]  # 获得数据库的句柄
+    coll_name = 'matchs_' + current_search_date
+    coll = db[coll_name]  # 获得collection的句柄
+
     for single_match_dict in coll.find():
         match_id = single_match_dict['match_id']
         # 如果当前match_id是正在爬取的比赛，则跳过
@@ -168,7 +168,7 @@ def compute(inc):
                 if (0.95 / last_away_prob_average) < 1.5:
                     continue
                 single_match_info_dict['support_direction'] += '0'
-            coll.update({"match_id": match_id}, {"support_direction": single_match_info_dict['support_direction']})
+            coll.update({"match_id": match_id}, {"$set": {"support_direction": single_match_info_dict['support_direction']}})
             print('%s 有支持方向' % match_id)
             send_text = '联赛名称: %s,开赛时间: %s,主队: %s,客队: %s,支持方向: %s' % (league_name, start_time, home_name, away_name, single_match_info_dict['support_direction'])
             itchat.send(send_text, toUserName='filehelper')
